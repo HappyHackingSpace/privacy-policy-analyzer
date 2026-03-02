@@ -8,7 +8,7 @@ import pathlib
 import re
 import sys
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import urljoin, urlparse
 from analyzer.prompts import SYSTEM_SCORER, build_user_prompt
 from analyzer.scoring import aggregate_chunk_results
@@ -99,7 +99,7 @@ def _is_privacy_like(s: str) -> bool:
     return any(k in s for k in _PRIVACY_CUES)
 
 
-def _http_get(url: str, timeout: int = 5) -> Optional[requests.Response]:
+def _http_get(url: str, timeout: int = 5) -> requests.Response | None:
     """HTTP GET with basic headers and redirects allowed."""
     try:
         r = requests.get(
@@ -117,7 +117,7 @@ def _http_get(url: str, timeout: int = 5) -> Optional[requests.Response]:
         return None
 
 
-def _fetch_text(url: str, timeout: int = 5) -> Optional[str]:
+def _fetch_text(url: str, timeout: int = 5) -> str | None:
     """Fetch raw text content via GET."""
     r = _http_get(url, timeout=timeout)
     return r.text if r else None
@@ -145,7 +145,7 @@ def _head_ok(url: str, timeout: int = 3) -> bool:
         return False
 
 
-def _extract_text_http(url: str) -> Optional[str]:
+def _extract_text_http(url: str) -> str | None:
     """Fetch text from <main> tag, fallback to <body>."""
     if _HAS_TRAFILATURA:
         try:
@@ -171,7 +171,7 @@ def _extract_text_http(url: str) -> Optional[str]:
     return t if len(t) >= 400 else None
 
 
-def fetch_content_with_selenium(url: str) -> Optional[str]:
+def fetch_content_with_selenium(url: str) -> str | None:
     """Return visible text using headless Chrome; robust for dynamic pages."""
     chromedriver_autoinstaller.install()
     opts = Options()
@@ -210,7 +210,7 @@ def fetch_content_with_selenium(url: str) -> Optional[str]:
         driver.quit()
 
 
-def fetch_policy_text(url: str, prefer: str = "auto") -> Optional[str]:
+def fetch_policy_text(url: str, prefer: str = "auto") -> str | None:
     """Fetch policy text using HTTP first; fallback to Selenium if needed."""
     if prefer in ("auto", "http"):
         t = _extract_text_http(url)
@@ -226,11 +226,11 @@ def _light_verify(url: str) -> bool:
     return _head_ok(url, timeout=3) #only check for existence
 
 
-def _get_sitemaps_from_robots(base_url: str) -> List[str]:
+def _get_sitemaps_from_robots(base_url: str) -> list[str]:
     """Extract sitemap URLs from robots.txt; also try the default /sitemap.xml."""
     parsed = urlparse(base_url)
     robots = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-    out: List[str] = []
+    out: list[str] = []
     txt = _fetch_text(robots)
     if txt:
         for line in txt.splitlines():
@@ -250,7 +250,7 @@ def _get_sitemaps_from_robots(base_url: str) -> List[str]:
     return uniq
 
 
-def _fetch_sitemap_urls(url: str, max_urls: int = 50) -> List[str]:
+def _fetch_sitemap_urls(url: str, max_urls: int = 50) -> list[str]:
     """Return privacy-like URLs found in the sitemap (gz and index supported)."""
     r = _http_get(url)
     if not r:
@@ -266,7 +266,7 @@ def _fetch_sitemap_urls(url: str, max_urls: int = 50) -> List[str]:
     except Exception:
         return []
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-    urls: List[str] = []
+    urls: list[str] = []
     if root.tag.endswith("sitemapindex"):
         for i, loc in enumerate(root.findall(".//sm:loc", ns)):
             if i >= 5:
@@ -298,7 +298,7 @@ def _get_url_priority(url: str) -> int:
     return 999
 
 
-def find_best_policy_url(html_content: str, base_url: str) -> Optional[Tuple[str, int]]:
+def find_best_policy_url(html_content: str, base_url: str) -> tuple[str, int] | None:
     """
     Finds the single best-matching URL for a privacy-related link on the page.
     Returns (url, priority_index).
@@ -309,7 +309,7 @@ def find_best_policy_url(html_content: str, base_url: str) -> Optional[Tuple[str
     soup = BeautifulSoup(html_content, "html.parser")
     
     # Store tuples of (priority_index, full_url)
-    matches: List[Tuple[int, str]] = []
+    matches: list[tuple[int, str]] = []
     seen_urls = set()
 
     for a in soup.find_all("a", href=True):
@@ -366,7 +366,7 @@ def _improve_candidate(candidate_url: str) -> str:
     return candidate_url
 
 
-def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
+def resolve_privacy_url(input_url: str) -> tuple[str, str | None]:
     """Resolve a likely privacy policy URL using heuristic discovery."""
     # If input looks like privacy policy already
     if _is_privacy_like(input_url):
@@ -388,7 +388,7 @@ def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
     parsed = urlparse(input_url)
     base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
 
-    path_heads: List[str] = []
+    path_heads: list[str] = []
     for p in _COMMON_PATHS:
         cand = base + p
         if _head_ok(cand) or _light_verify(cand):
@@ -411,7 +411,7 @@ def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
     return input_url, None
 
 
-def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100) -> List[Tuple[str, str]]:
+def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100) -> list[tuple[str, str]]:
     """
     Collect all privacy-related link candidates from HTML.
     Returns list of (full_url, anchor_text) tuples, de-duplicated.
@@ -420,7 +420,7 @@ def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100)
         return []
     
     soup = BeautifulSoup(html_content, "html.parser")
-    candidates: Dict[str, str] = {}  # url -> best_anchor_text
+    candidates: dict[str, str] = {}  # url -> best_anchor_text
     
     for a in soup.find_all("a", href=True):
         href = a["href"]
@@ -456,7 +456,7 @@ def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100)
     return [(url, text) for url, text in candidates.items()]
 
 
-def _score_candidate(url: str, anchor_text: str = "") -> Tuple[int, int]:
+def _score_candidate(url: str, anchor_text: str = "") -> tuple[int, int]:
     """
     Score a candidate URL and anchor text.
     Returns (priority_index, anchor_bonus) where lower values are better.
@@ -473,7 +473,7 @@ def _score_candidate(url: str, anchor_text: str = "") -> Tuple[int, int]:
     return (url_priority, anchor_bonus)
 
 
-def _pick_best_verified_candidate(candidates: List[Tuple[str, str]], max_verify: int = 5) -> Optional[str]:
+def _pick_best_verified_candidate(candidates: list[tuple[str, str]], max_verify: int = 5) -> str | None:
     """
     Score candidates, verify top ones, return the best verified candidate.
     """
@@ -497,7 +497,7 @@ def _pick_best_verified_candidate(candidates: List[Tuple[str, str]], max_verify:
     return None
 
 
-def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
+def resolve_privacy_url(input_url: str) -> tuple[str, str | None]:
     """
     Resolve a likely privacy policy URL using link-based discovery (primary),
     then sitemap discovery, then common paths (fallback).
@@ -511,7 +511,7 @@ def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
     
     # === PHASE 1: Link-based discovery ===
     # Collect links from input page and homepage
-    candidates_set: Dict[str, str] = {}  # url -> anchor_text
+    candidates_set: dict[str, str] = {}  # url -> anchor_text
     
     for page_url in [input_url, base]:
         r = _http_get(page_url)
@@ -535,7 +535,7 @@ def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
                 return cand, input_url
     
     # === PHASE 3: Common paths (last resort) ===
-    path_heads: List[str] = []
+    path_heads: list[str] = []
     for p in _COMMON_PATHS:
         cand = base + p
         if _head_ok(cand) or _light_verify(cand):
@@ -554,7 +554,7 @@ def resolve_privacy_url(input_url: str) -> Tuple[str, Optional[str]]:
 
 def split_text_into_chunks(
     text: str, chunk_size: int = 3500, chunk_overlap: int = 350
-) -> List[str]:
+) -> list[str]:
     """Split text into chunks using paragraph-first recursive boundaries."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -564,7 +564,7 @@ def split_text_into_chunks(
     return splitter.split_text(text or "")
 
 
-def analyze_chunk_json(text_chunk: str, model: str) -> Optional[Dict[str, Any]]:
+def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
     """Analyze a text chunk with the LLM and return one JSON object."""
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
@@ -688,7 +688,7 @@ def main() -> None:
         chunks = head + [tail]
 
     start_analysis = time.time()
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     print(f"[3/3]Analyzing {len(chunks)} chunks in parallel...")
     
     # Parallel analysis of chunks
