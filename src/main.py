@@ -92,6 +92,13 @@ _COMMON_PATHS = [
     "/tr/gizlilik-politikasi",
 ]
 
+# Selenium timeouts (seconds)
+_SELENIUM_PAGE_LOAD_TIMEOUT = 10
+_SELENIUM_WAIT_TIMEOUT = 5
+
+# Minimum character thresholds for extracted text
+_MIN_TEXT_LENGTH_MAIN = 100    # <main> tag must exceed this to be considered valid
+_MIN_TEXT_LENGTH_POLICY = 400  # extracted policy text must exceed this to be kept
 
 def _is_privacy_like(s: str) -> bool:
     """Heuristic check for privacy-related terms in a string."""
@@ -153,7 +160,7 @@ def _extract_text_http(url: str) -> str | None:
             if downloaded:
                 text = trafilatura.extract(downloaded, include_formatting=False) or ""
                 t = text.strip()
-                return t if len(t) >= 400 else None
+                return t if len(t) >= _MIN_TEXT_LENGTH_POLICY else None
         except Exception:
             pass
     r = _http_get(url)
@@ -168,7 +175,7 @@ def _extract_text_http(url: str) -> str | None:
         content_element = soup.find("body")
         
     t = content_element.get_text("\n").strip() if content_element else ""
-    return t if len(t) >= 400 else None
+    return t if len(t) >= _MIN_TEXT_LENGTH_POLICY else None
 
 
 def fetch_content_with_selenium(url: str) -> str | None:
@@ -187,9 +194,8 @@ def fetch_content_with_selenium(url: str) -> str | None:
     opts.add_argument("--blink-settings=imagesEnabled=false") # do not load images
     opts.page_load_strategy = 'eager'  # do not wait for full load
     driver = webdriver.Chrome(options=opts)
-    _SELENIUM_WAIT_TIMEOUT = 5
     try:
-        driver.set_page_load_timeout(10)
+        driver.set_page_load_timeout(_SELENIUM_PAGE_LOAD_TIMEOUT)
         driver.get(url)
         WebDriverWait(driver, _SELENIUM_WAIT_TIMEOUT).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
@@ -199,7 +205,7 @@ def fetch_content_with_selenium(url: str) -> str | None:
         try:
             content_element = driver.find_element(By.TAG_NAME, "main")
             text = content_element.get_attribute("innerText")
-            if text and len(text.strip()) > 100:
+            if text and len(text.strip()) > _MIN_TEXT_LENGTH_MAIN:
                 return text
         except Exception:
             pass
