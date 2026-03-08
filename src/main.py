@@ -40,8 +40,12 @@ except Exception:
 
 
 load_dotenv()
-
-# Priority-based regex patterns for discovery (Lower index = Higher priority)
+# ---------------------------------------------------------------------------
+# Priority-based regex patterns for privacy URL discovery.
+# Lower index = higher priority. The resolver picks the URL matching the
+# lowest-index pattern, so "privacy-policy" (idx 0) always beats a generic
+# "privacy" (idx 6) hub page.
+# ---------------------------------------------------------------------------
 _PRIVACY_REGEX_PATTERNS = [
     re.compile(r"privacy-policy\b", re.IGNORECASE),          # 1. Target: Full legal text
     re.compile(r"\bprivacy/policy\b", re.IGNORECASE),        # 2
@@ -309,6 +313,7 @@ def find_best_policy_url(html_content: str, base_url: str) -> tuple[str, int] | 
     """
     Finds the single best-matching URL for a privacy-related link on the page.
     Returns (url, priority_index).
+    Lower = better.  Returns _NO_MATCH_PRIORITY (999) when nothing matches.
     """
     if not html_content:
         return None
