@@ -1,5 +1,4 @@
 import time
-import argparse
 import gzip
 import io
 import json
@@ -12,6 +11,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 from analyzer.prompts import SYSTEM_SCORER, build_user_prompt
 from analyzer.scoring import aggregate_chunk_results
+import click
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -547,111 +547,71 @@ def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
         return None
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Privacy Policy Analyzer (auto-discovery + JSON scoring)"
-    )
-    parser.add_argument("--url", type=str, help="Site or policy URL to analyze")
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=os.getenv("OPENAI_MODEL", "gpt-4o"),
-        help="OpenAI chat model, e.g., gpt-4o",
-    )
-    parser.add_argument(
-        "--chunk-size", type=int, default=10000, help="Character-based chunk size"
-    )
-    parser.add_argument(
-        "--chunk-overlap", type=int, default=350, help="Overlap between chunks"
-    )
-    parser.add_argument(
-        "--max-chunks",
-        type=int,
-        default=30,
-        help="Hard cap for analyzed chunks (tail chunks are merged).",
-    )
-    parser.add_argument(
-        "--report",
-        type=str,
-        choices=["summary", "detailed", "full"],
-        default="summary",
-        help="Report detail level",
-    )
-    parser.add_argument(
-        "--fetch",
-        type=str,
-        choices=["auto", "http", "selenium"],
-        default="auto",
-        help="Fetch method preference",
-    )
-    parser.add_argument(
-        "--no-discover",
-        action="store_true",
-        help="Skip auto-discovery and analyze the given URL as-is",
-    )
-
-    args = parser.parse_args()
-    input_url = args.url or input("Enter a site (or privacy policy) URL: ").strip()
+@click.command()
+@click.option("--url", prompt="Enter a site (or privacy policy) URL", help="Site or policy URL to analyze.")
+@click.option("--model", default=lambda: os.getenv("OPENAI_MODEL", "gpt-4o"), help="LLM model name.")
+@click.option("--chunk-size", default=10000, type=int, help="Character-based chunk size.")
+@click.option("--chunk-overlap", default=350, type=int, help="Overlap between chunks.")
+@click.option("--max-chunks", default=30, type=int, help="Hard cap for analyzed chunks.")
+@click.option("--report", type=click.Choice(["summary", "detailed", "full"]), default="summary", help="Report detail level.")
+@click.option("--fetch", "fetch_method", type=click.Choice(["auto", "http", "selenium"]), default="auto", help="Fetch method preference.")
+@click.option("--no-discover", is_flag=True, help="Skip auto-discovery; analyze the given URL as-is.")
+def main(
+    url: str,
+    model: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    max_chunks: int,
+    report: str,
+    fetch_method: str,
+    no_discover: bool,
+) -> None:
+    """Privacy Policy Analyzer \u2013 auto-discovery + JSON scoring."""
+    from concurrent.futures import ThreadPoolExecutor
 
     start_total = time.time()
-    
-    print(f"\n[1/3] Resolving Privacy URL...")
+
+    # --- Phase 1: Resolve URL ---
+    click.secho("\n[1/3] Resolving Privacy URL...", fg="cyan")
     start_discovery = time.time()
-    
-    resolved_url, _ = (
-        (input_url, None) if args.no_discover else resolve_privacy_url(input_url)
-    )
+    resolved_url, _ = (url, None) if no_discover else resolve_privacy_url(url)
     discovery_time = time.time() - start_discovery
-    print(f"DEBUG: Discovery took {discovery_time:.2f}s. Resolved to: {resolved_url}")
-    
-    print(f"[2/3] Fetching Policy Content...")
+    click.echo(f"      Resolved to: {click.style(resolved_url, fg='green')} ({discovery_time:.2f}s)")
+
+    # --- Phase 2: Fetch content ---
+    click.secho("[2/3] Fetching Policy Content...", fg="cyan")
     start_fetch = time.time()
-    content = fetch_policy_text(resolved_url, prefer=args.fetch)
+    content = fetch_policy_text(resolved_url, prefer=fetch_method)
     fetch_time = time.time() - start_fetch
-    print(f"DEBUG: Fetching took {fetch_time:.2f}s. Content length: {len(content) if content else 0} chars.")
-    
+    click.echo(f"      Content length: {len(content) if content else 0} chars ({fetch_time:.2f}s)")
+
     if not content:
-        print(
-            json.dumps(
-                {
-                    "status": "error",
-                    "reason": "fetch_failed",
-                    "url": input_url,
-                    "resolved_url": resolved_url,
-                }
-            )
-        )
-        return
+        click.secho("Error: Failed to fetch policy content.", fg="red", err=True)
+        click.echo(json.dumps({"status": "error", "reason": "fetch_failed", "url": url, "resolved_url": resolved_url}))
+        raise SystemExit(1)
 
-    chunks = split_text_into_chunks(
-        content, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
-    )
+    chunks = split_text_into_chunks(content, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if not chunks:
-        print(
-            json.dumps(
-                {
-                    "status": "error",
-                    "reason": "no_chunks",
-                    "url": input_url,
-                    "resolved_url": resolved_url,
-                }
-            )
-        )
-        return
+        click.secho("Error: No text chunks produced.", fg="red", err=True)
+        click.echo(json.dumps({"status": "error", "reason": "no_chunks", "url": url, "resolved_url": resolved_url}))
+        raise SystemExit(1)
 
-    if len(chunks) > args.max_chunks:
-        head = chunks[: args.max_chunks - 1]
-        tail = " ".join(chunks[args.max_chunks - 1 :])
+    # Merge overflow chunks into the last allowed slot
+    if len(chunks) > max_chunks:
+        head = chunks[: max_chunks - 1]
+        tail = " ".join(chunks[max_chunks - 1 :])
         chunks = head + [tail]
 
+    # --- Phase 3: LLM analysis ---
+    click.secho(f"[3/3] Analyzing {len(chunks)} chunk(s) in parallel...", fg="cyan")
     start_analysis = time.time()
     results: list[dict[str, Any]] = []
-    print(f"[3/3]Analyzing {len(chunks)} chunks in parallel...")
-    
-    # Parallel analysis of chunks
-    from concurrent.futures import ThreadPoolExecutor
+
     with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(analyze_chunk_json, chunk, args.model): i for i, chunk in enumerate(chunks, 1)}
+        futures = {
+            executor.submit(analyze_chunk_json, chunk, model): i
+            for i, chunk in enumerate(chunks, 1)
+        }
         for future in futures:
             idx = futures[future]
             res = future.result()
@@ -661,55 +621,51 @@ def main() -> None:
 
     analysis_time = time.time() - start_analysis
     total_time = time.time() - start_total
-    
-    if not results:
-        print(
-            json.dumps(
-                {
-                    "status": "error",
-                    "reason": "no_valid_scores",
-                    "url": input_url,
-                    "resolved_url": resolved_url,
-                }
-            )
-        )
-        return
 
+    if not results:
+        click.secho("Error: No valid scores returned by model.", fg="red", err=True)
+        click.echo(json.dumps({"status": "error", "reason": "no_valid_scores", "url": url, "resolved_url": resolved_url}))
+        raise SystemExit(1)
+
+    # --- Build output ---
     agg = aggregate_chunk_results(results)
-    base = {
+    base_info = {
         "status": "ok",
-        "url": input_url,
+        "url": url,
         "resolved_url": resolved_url,
-        "model": args.model,
+        "model": model,
         "chunks": len(chunks),
         "valid_chunks": len(results),
     }
 
-    if args.report == "summary":
+    if report == "summary":
         out = {
-            **base,
+            **base_info,
             "overall_score": agg["overall_score"],
             "confidence": agg["confidence"],
             "top_strengths": agg["top_strengths"],
             "top_risks": agg["top_risks"],
             "red_flags_count": len(agg["red_flags"]),
         }
-    elif args.report == "detailed":
-        out = {**base, **agg}
+    elif report == "detailed":
+        out = {**base_info, **agg}
     else:
-        out = {**base, **agg, "chunks": results}
+        out = {**base_info, **agg, "chunks": results}
 
-    print(json.dumps(out, ensure_ascii=False, indent=2))
-    print("\n" + "="*40)
-    print(f"Performance Summary for model:")
-    print("-" * 40)
-    print(f"Discovery time:    {discovery_time:>6.2f}s")
-    print(f"Fetching time:   {fetch_time:>6.2f}s")
-    print(f"LLM Analysis time:          {analysis_time:>6.2f}s")
-    print(f"Total time :          {total_time:>6.2f}s")
+    click.echo(json.dumps(out, ensure_ascii=False, indent=2))
+
+    # --- Performance summary (stderr, won't pollute JSON stdout) ---
+    click.secho("\n" + "=" * 40, fg="yellow", err=True)
+    click.secho("Performance Summary", bold=True, err=True)
+    click.secho("-" * 40, fg="yellow", err=True)
+    click.echo(f"  Discovery:    {discovery_time:>6.2f}s", err=True)
+    click.echo(f"  Fetching:     {fetch_time:>6.2f}s", err=True)
+    click.echo(f"  LLM Analysis: {analysis_time:>6.2f}s", err=True)
+    click.echo(f"  Total:        {total_time:>6.2f}s", err=True)
     if chunks:
-        print(f"Average time needed per chunk:    {(analysis_time/len(chunks)):>6.2f}s")
-    print("="*40 + "\n")
+        click.echo(f"  Per chunk:    {(analysis_time / len(chunks)):>6.2f}s", err=True)
+    click.secho("=" * 40 + "\n", fg="yellow", err=True)
+
 
 if __name__ == "__main__":
     main()

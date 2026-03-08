@@ -1151,6 +1151,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "chromedriver-autoinstaller" },
+    { name = "click" },
     { name = "cliff" },
     { name = "diskcache" },
     { name = "httpx" },
@@ -1183,6 +1184,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.13.5,<5.0.0" },
     { name = "chromedriver-autoinstaller", specifier = ">=0.6.4" },
+    { name = "click", specifier = ">=8.1.0" },
     { name = "cliff", specifier = ">=4.11.0" },
     { name = "diskcache", specifier = ">=5.6.3,<6.0.0" },
     { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
