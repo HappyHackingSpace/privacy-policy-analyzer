@@ -187,10 +187,11 @@ def fetch_content_with_selenium(url: str) -> str | None:
     opts.add_argument("--blink-settings=imagesEnabled=false") # do not load images
     opts.page_load_strategy = 'eager'  # do not wait for full load
     driver = webdriver.Chrome(options=opts)
+    _SELENIUM_WAIT_TIMEOUT = 5
     try:
         driver.set_page_load_timeout(10)
         driver.get(url)
-        WebDriverWait(driver, 5).until(
+        WebDriverWait(driver, _SELENIUM_WAIT_TIMEOUT).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
         
