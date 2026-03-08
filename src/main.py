@@ -525,13 +525,12 @@ def resolve_privacy_url(input_url: str) -> tuple[str, str | None]:
     # Collect links from input page and homepage
     candidates_set: dict[str, str] = {}  # url -> anchor_text
     
-    for page_url in [input_url, base]:
-        r = _http_get(page_url)
-        if r:
-            links = _collect_link_candidates(r.text, r.url, limit=100)
-            for url, text in links:
-                if url not in candidates_set:
-                    candidates_set[url] = text
+    for page_url in (input_url, base):
+        if not (resp := _http_get(page_url)):
+            continue
+
+        for url, text in _collect_link_candidates(resp.text, resp.url, limit=100):
+            candidates_set.setdefault(url, text)
     
     if candidates_set:
         candidates_list = [(url, text) for url, text in candidates_set.items()]
