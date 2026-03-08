@@ -19,6 +19,7 @@ dependencies = [
     "selenium>=4.35.0",
     "chromedriver-autoinstaller>=0.6.4",
     "requests>=2.32.5",
+    "click>=8.1.0",
 ]
 
 [dependency-groups]
