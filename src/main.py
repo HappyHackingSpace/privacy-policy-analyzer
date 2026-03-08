@@ -546,20 +546,11 @@ def resolve_privacy_url(input_url: str) -> tuple[str, str | None]:
                 return cand, input_url
     
     # === PHASE 3: Common paths (last resort) ===
-    path_heads: list[str] = []
-    for p in _COMMON_PATHS:
-        cand = base + p
-        if _head_ok(cand) or _light_verify(cand):
-            if _light_verify(cand):
-                print(f"DEBUG: Found via common path: {cand}")
-                return cand, input_url
-            path_heads.append(cand)
-    
-    for cand in path_heads:
-        if _light_verify(cand):
-            print(f"DEBUG: Found via common path (verified): {cand}")
-            return cand, input_url
-    
+    for candidate_url in (base + path for path in _COMMON_PATHS):
+        if _light_verify(candidate_url):
+            print(f"DEBUG: Found via common path: {candidate_url}")
+            return candidate_url, input_url
+
     return input_url, None
 
 
