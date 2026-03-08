@@ -378,51 +378,6 @@ def _improve_candidate(candidate_url: str) -> str:
     return candidate_url
 
 
-def resolve_privacy_url(input_url: str) -> tuple[str, str | None]:
-    """Resolve a likely privacy policy URL using heuristic discovery."""
-    # If input looks like privacy policy already
-    if _is_privacy_like(input_url):
-        return input_url, None
-
-    # Fetch the input page to look for links
-    r = _http_get(input_url)
-    if r:
-        match_info = find_best_policy_url(r.text, r.url)
-        if match_info:
-            best_match, _ = match_info
-            # Validate content
-            text = _extract_text_http(best_match)
-            if text:
-                final_url = _improve_candidate(best_match)
-                return final_url, input_url
-
-    # Fallback 1: Common paths
-    parsed = urlparse(input_url)
-    base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-
-    path_heads: list[str] = []
-    for p in _COMMON_PATHS:
-        cand = base + p
-        if _head_ok(cand) or _light_verify(cand):
-            if _light_verify(cand):
-                final_url = _improve_candidate(cand)
-                return final_url, input_url
-            path_heads.append(cand)
-
-    for cand in path_heads:
-        if _light_verify(cand):
-            final_url = _improve_candidate(cand)
-            return final_url, input_url
-
-    for sm in _get_sitemaps_from_robots(base):
-        for cand in _fetch_sitemap_urls(sm, max_urls=50):
-            if _light_verify(cand):
-                # We typically don't improve sitemap candidates as they are usually leaf nodes
-                return cand, input_url
-
-    return input_url, None
-
-
 def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100) -> list[tuple[str, str]]:
     """
     Collect all privacy-related link candidates from HTML.
