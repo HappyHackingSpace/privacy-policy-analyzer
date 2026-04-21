@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10.11"
 dependencies = [
     "openai (>=1.106.1,<2.0.0)",
-    "python-dotenv (>=1.1.1,<2.0.0)",
+    "python-dotenv>=1.2.2,<2.0.0",
     "httpx (>=0.28.1,<0.29.0)",
     "trafilatura (>=2.0.0,<3.0.0)",
     "beautifulsoup4 (>=4.13.5,<5.0.0)",
