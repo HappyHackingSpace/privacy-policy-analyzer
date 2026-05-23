@@ -630,7 +630,18 @@ def split_text_into_chunks(
 
 
 def _analyze_chunk_gemini(text_chunk: str, model: str) -> dict[str, Any] | None:
-    """Analyze a text chunk using the Google Gemini API."""
+    """Analyze a text chunk using the Google Gemini API.
+
+    Args:
+        text_chunk: The text content chunk to analyze.
+        model: The Gemini model name to use.
+
+    Returns:
+        The scored and analyzed dictionary if successful, None otherwise.
+
+    Raises:
+        RuntimeError: If GEMINI_API_KEY environment variable is not configured.
+    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set. Configure your .env file.")
@@ -654,7 +665,18 @@ def _analyze_chunk_gemini(text_chunk: str, model: str) -> dict[str, Any] | None:
 
 
 def _analyze_chunk_openai(text_chunk: str, model: str) -> dict[str, Any] | None:
-    """Analyze a text chunk with the LLM and return one JSON object."""
+    """Analyze a text chunk with the OpenAI API and return one JSON object.
+
+    Args:
+        text_chunk: The text content chunk to analyze.
+        model: The OpenAI-compatible model name to use.
+
+    Returns:
+        The scored and analyzed dictionary if successful, None otherwise.
+
+    Raises:
+        RuntimeError: If OPENAI_API_KEY environment variable is not configured.
+    """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set. Configure your .env file.")
@@ -682,6 +704,13 @@ def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
     Automatically selects the backend based on the model name:
     - Models starting with ``gemini`` → Google Gemini API (GEMINI_API_KEY)
     - All other models → OpenAI-compatible API (OPENAI_API_KEY + OPENAI_BASE_URL)
+
+    Args:
+        text_chunk: The text content chunk to analyze.
+        model: The LLM model name to use.
+
+    Returns:
+        The scored and analyzed dictionary if successful, None otherwise.
     """
     if model.lower().startswith("gemini"):
         return _analyze_chunk_gemini(text_chunk, model)
