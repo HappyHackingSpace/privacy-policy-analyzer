@@ -19,17 +19,39 @@ _REQUIRED_KEYS = set(SCORING_WEIGHTS.keys())
 
 
 def _avg(nums: list[float]) -> float:
+    """Calculate the average of a list of floats.
+
+    Args:
+        nums: A list of float numbers.
+
+    Returns:
+        The average value as a float, or 0.0 if the list is empty.
+    """
     return sum(nums) / len(nums) if nums else 0.0
 
 
+def _get_score_descending(kv: tuple[str, float]) -> float:
+    """Helper key function to sort categories by score in descending order."""
+    return -kv[1]
+
+
+def _get_score_ascending(kv: tuple[str, float]) -> float:
+    """Helper key function to sort categories by score in ascending order."""
+    return kv[1]
+
+
 def aggregate_chunk_results(chunk_json_list: list[dict[str, Any]]) -> dict[str, Any]:
-    """
-    Aggregates per-chunk JSON results into a weighted overall report.
-    Expects each item to contain:
-      - "scores": {category: int 0..10}
-      - "rationales": {category: str}
-      - optional "red_flags": [str]
-      - optional "notes": [str]
+    """Aggregates per-chunk JSON results into a weighted overall report.
+
+    Args:
+        chunk_json_list: A list of chunk evaluation results from LLM. Each item must contain
+            "scores" (dict mapping category keys to int 0..10), "rationales" (dict mapping
+            category keys to string explanations), optional "red_flags" (list of strings),
+            and optional "notes" (list of strings).
+
+    Returns:
+        A aggregated report dictionary with overall score, confidence, category scores,
+        top strengths, top risks, red flags, and recommendations.
     """
     per_cat: dict[str, list[float]] = {k: [] for k in _REQUIRED_KEYS}
     rationales: dict[str, list[str]] = {k: [] for k in _REQUIRED_KEYS}
@@ -73,11 +95,11 @@ def aggregate_chunk_results(chunk_json_list: list[dict[str, Any]]) -> dict[str, 
 
     strengths: list[tuple[str, float]] = sorted(
         ((k, v["score"]) for k, v in category_scores.items()),
-        key=lambda kv: -kv[1],
+        key=_get_score_descending,
     )[:3]
     risks: list[tuple[str, float]] = sorted(
         ((k, v["score"]) for k, v in category_scores.items()),
-        key=lambda kv: kv[1],
+        key=_get_score_ascending,
     )[:3]
 
     return {
