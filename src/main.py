@@ -16,6 +16,8 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from google import genai
+from google.genai import types as genai_types
 from openai import OpenAI
 
 from selenium import webdriver
@@ -521,15 +523,36 @@ def split_text_into_chunks(
     return splitter.split_text(text or "")
 
 
-def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
+def _analyze_chunk_gemini(text_chunk: str, model: str) -> dict[str, Any] | None:
+    """Analyze a text chunk using the Google Gemini API."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not set. Configure your .env file.")
+
+    client = genai.Client(api_key=api_key)
+    resp = client.models.generate_content(
+        model=model,
+        contents=build_user_prompt(text_chunk),
+        config=genai_types.GenerateContentConfig(
+            system_instruction=SYSTEM_SCORER,
+            response_mime_type="application/json",
+            temperature=0.0,
+            max_output_tokens=8192,
+        ),
+    )
+    content = (resp.text or "").strip()
+    try:
+        return json.loads(content)  # type: ignore[no-any-return]
+    except Exception:
+        return None
+
+
+def _analyze_chunk_openai(text_chunk: str, model: str) -> dict[str, Any] | None:
     """Analyze a text chunk with the LLM and return one JSON object."""
     api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
-
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set. Configure your .env file.")
-    #client = OpenAI(api_key=api_key)
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key)
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -537,7 +560,7 @@ def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
             {"role": "user", "content": build_user_prompt(text_chunk)},
         ],
         temperature=0,
-        max_tokens=2000, #changed from 300 to 2000
+        max_tokens=2000,
         response_format={"type": "json_object"},
     )
     content = (resp.choices[0].message.content or "").strip()
@@ -545,6 +568,18 @@ def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
         return json.loads(content)  # type: ignore[no-any-return]
     except Exception:
         return None
+
+
+def analyze_chunk_json(text_chunk: str, model: str) -> dict[str, Any] | None:
+    """Analyze a text chunk with the LLM and return one JSON object.
+
+    Automatically selects the backend based on the model name:
+    - Models starting with ``gemini`` → Google Gemini API (GEMINI_API_KEY)
+    - All other models → OpenAI-compatible API (OPENAI_API_KEY + OPENAI_BASE_URL)
+    """
+    if model.lower().startswith("gemini"):
+        return _analyze_chunk_gemini(text_chunk, model)
+    return _analyze_chunk_openai(text_chunk, model)
 
 
 @click.command()
