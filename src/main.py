@@ -85,6 +85,11 @@ _PRIVACY_CUES = (
     "privatsphäre",
 )
 
+_PRIVACY_KEYWORDS = [
+    "privacy policy",
+    "privacy-policy",
+]
+
 _COMMON_PATHS = [
     "/privacy",
     "/privacy-policy",
@@ -106,14 +111,34 @@ _SELENIUM_WAIT_TIMEOUT = 5
 _MIN_TEXT_LENGTH_MAIN = 100    # <main> tag must exceed this to be considered valid
 _MIN_TEXT_LENGTH_POLICY = 400  # extracted policy text must exceed this to be kept
 
+# Priority/discovery configurations
+_NO_MATCH_PRIORITY = 999
+_MAX_SPECIFIC_PRIORITY = 2  # Priorities <= 2 are considered highly specific policy pages
+
 def _is_privacy_like(s: str) -> bool:
-    """Heuristic check for privacy-related terms in a string."""
+    """Heuristic check for privacy-related terms in a string.
+
+    Args:
+        s: The string to check for privacy cues.
+
+    Returns:
+        True if any privacy cue is found in the string, False otherwise.
+    """
     s = (s or "").lower()
     return any(k in s for k in _PRIVACY_CUES)
 
 
 def _http_get(url: str, timeout: int = 5) -> requests.Response | None:
-    """HTTP GET with basic headers and redirects allowed."""
+    """HTTP GET with basic headers and redirects allowed.
+
+    Args:
+        url: The target URL to send the GET request to.
+        timeout: Timeout in seconds for the request. Defaults to 5.
+
+    Returns:
+        The requests.Response object if status is OK (< 400) and contains text,
+        otherwise None.
+    """
     try:
         r = requests.get(
             url,
@@ -131,13 +156,30 @@ def _http_get(url: str, timeout: int = 5) -> requests.Response | None:
 
 
 def _fetch_text(url: str, timeout: int = 5) -> str | None:
-    """Fetch raw text content via GET."""
+    """Fetch raw text content via GET.
+
+    Args:
+        url: The target URL to fetch text from.
+        timeout: Timeout in seconds for the request. Defaults to 5.
+
+    Returns:
+        The response text content as a string, or None if the request failed.
+    """
     r = _http_get(url, timeout=timeout)
     return r.text if r else None
 
 
 def _head_ok(url: str, timeout: int = 3) -> bool:
-    """Lightweight existence probe using HEAD; redirects considered OK."""
+    """Lightweight existence probe using HEAD; redirects considered OK.
+
+    Args:
+        url: The target URL to probe.
+        timeout: Timeout in seconds for the request. Defaults to 3.
+
+    Returns:
+        True if the URL exists and returns a successful status code (2xx) or
+        a redirect status code (3xx), False otherwise.
+    """
     try:
         r = requests.head(
             url,
@@ -159,7 +201,15 @@ def _head_ok(url: str, timeout: int = 3) -> bool:
 
 
 def _extract_text_http(url: str) -> str | None:
-    """Fetch text from <main> tag, fallback to <body>."""
+    """Fetch text from <main> tag, fallback to <body>.
+
+    Args:
+        url: The target URL to extract text from.
+
+    Returns:
+        The extracted policy text if its length is greater than or equal to
+        _MIN_TEXT_LENGTH_POLICY, otherwise None.
+    """
     if _HAS_TRAFILATURA:
         try:
             downloaded = trafilatura.fetch_url(url)
@@ -235,7 +285,14 @@ def fetch_policy_text(url: str, prefer: str = "auto") -> str | None:
 
 
 def _light_verify(url: str) -> bool:
-    """Low-cost check that a URL likely points to a privacy policy page."""
+    """Low-cost check that a URL likely points to a privacy policy page.
+
+    Args:
+        url: The candidate URL to verify.
+
+    Returns:
+        True if the URL passes the lightweight HEAD existence probe, False otherwise.
+    """
     return _head_ok(url, timeout=3) #only check for existence
 
 
@@ -304,18 +361,35 @@ def _fetch_sitemap_urls(url: str, max_urls: int = 50) -> list[str]:
 
 
 def _get_url_priority(url: str) -> int:
-    """Return the priority index of a URL based on regex patterns. Lower is better."""
+    """Return the priority index of a URL based on regex patterns. Lower is better.
+
+    Args:
+        url: The URL to evaluate.
+
+    Returns:
+        The priority index (0-based) based on the matching regex pattern,
+        or _NO_MATCH_PRIORITY if no pattern matches.
+    """
     for idx, pattern in enumerate(_PRIVACY_REGEX_PATTERNS):
         if pattern.search(url):
             return idx
-    return 999
+    return _NO_MATCH_PRIORITY
+
+
+def _get_priority_key(item: tuple[int, str]) -> int:
+    """Helper key function to sort matches by priority index (ascending)."""
+    return item[0]
 
 
 def find_best_policy_url(html_content: str, base_url: str) -> tuple[str, int] | None:
-    """
-    Finds the single best-matching URL for a privacy-related link on the page.
-    Returns (url, priority_index).
-    Lower = better.  Returns _NO_MATCH_PRIORITY (999) when nothing matches.
+    """Finds the single best-matching URL for a privacy-related link on the page.
+
+    Args:
+        html_content: The HTML content of the page to search for links.
+        base_url: The base URL used to resolve relative links.
+
+    Returns:
+        A tuple of (url, priority_index) if matches are found, otherwise None.
     """
     if not html_content:
         return None
@@ -330,7 +404,8 @@ def find_best_policy_url(html_content: str, base_url: str) -> tuple[str, int] | 
         href = a["href"]
         try:
             full_url = urljoin(base_url, href)
-        except Exception:
+        except Exception as e:
+            click.secho(f"      DEBUG: URL join error for '{href}': {e}", fg="yellow", dim=True, err=True)
             continue
 
         if not full_url.startswith("http"):
@@ -341,31 +416,31 @@ def find_best_policy_url(html_content: str, base_url: str) -> tuple[str, int] | 
         seen_urls.add(full_url)
 
         # Check regex priority
-        p = _get_url_priority(full_url)
-        if p < 999:
-            matches.append((p, full_url))
+        priority_idx = _get_url_priority(full_url)
+        if priority_idx < _NO_MATCH_PRIORITY:
+            matches.append((priority_idx, full_url))
 
     if not matches:
         return None
 
     # Sort by priority index (ascending), get the best match
-    matches.sort(key=lambda x: x[0])
+    matches.sort(key=_get_priority_key)
     return (matches[0][1], matches[0][0])
 
 
 def _improve_candidate(candidate_url: str) -> str:
-    """
-    If the found candidate is a generic 'hub' page (e.g. /privacy),
+    """If the found candidate is a generic 'hub' page (e.g. /privacy),
+
     fetch it and check if it links to a more specific policy (e.g. /privacy-policy).
     """
     # 0=privacy-policy, 1=privacy/policy, 2=privacy-policy-x
     # Generally, if we found something better than generic 'privacy' (index 6), we stick with it.
-    # But let's say anything > 2 is worth checking deeper.
+    # But let's say anything > _MAX_SPECIFIC_PRIORITY is worth checking deeper.
     priority = _get_url_priority(candidate_url)
-    if priority <= 2:
+    if priority <= _MAX_SPECIFIC_PRIORITY:
         return candidate_url
 
-    print(f"DEBUG: Candidate '{candidate_url}' is generic (Priority {priority}). Checking for deep links...")
+    click.secho(f"      DEBUG: Candidate '{candidate_url}' is generic (Priority {priority}). Checking for deep links...", fg="yellow", dim=True, err=True)
     r = _http_get(candidate_url)
     if not r:
         return candidate_url
@@ -374,16 +449,22 @@ def _improve_candidate(candidate_url: str) -> str:
     if match_info:
         deep_url, deep_priority = match_info
         if deep_priority < priority:
-            print(f"DEBUG: Upgraded to deep link '{deep_url}' (Priority {deep_priority})")
+            click.secho(f"      DEBUG: Upgraded to deep link '{deep_url}' (Priority {deep_priority})", fg="yellow", dim=True, err=True)
             return deep_url
     
     return candidate_url
 
 
 def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100) -> list[tuple[str, str]]:
-    """
-    Collect all privacy-related link candidates from HTML.
-    Returns list of (full_url, anchor_text) tuples, de-duplicated.
+    """Collect all privacy-related link candidates from HTML.
+
+    Args:
+        html_content: The HTML page content to extract links from.
+        base_url: The base URL of the page to resolve relative URLs.
+        limit: Maximum number of candidate links to collect. Defaults to 100.
+
+    Returns:
+        List of (full_url, anchor_text) tuples, de-duplicated.
     """
     if not html_content:
         return []
@@ -395,7 +476,8 @@ def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100)
         href = a["href"]
         try:
             full_url = urljoin(base_url, href)
-        except Exception:
+        except Exception as e:
+            click.secho(f"      DEBUG: URL join error for '{href}': {e}", fg="yellow", dim=True, err=True)
             continue
         
         if not full_url.startswith("http"):
@@ -404,19 +486,19 @@ def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100)
         # Get anchor text
         anchor_text = (a.get_text(strip=True) or "").lower()
         
-        #select candidates based on privacy-likeness or priority instead of just any link
+        # select candidates based on privacy-likeness or priority instead of just any link
         url_priority = _get_url_priority(full_url)
         anchor_priority = _get_url_priority(anchor_text)
         if (
             _is_privacy_like(full_url)
             or _is_privacy_like(anchor_text)
-            or url_priority < 999
-            or anchor_priority < 999
+            or url_priority < _NO_MATCH_PRIORITY
+            or anchor_priority < _NO_MATCH_PRIORITY
         ):
             existing = candidates.get(full_url, "")
             if (
                 not existing
-                or ("privacy policy" in anchor_text and "privacy policy" not in existing)
+                or (any(kw in anchor_text for kw in _PRIVACY_KEYWORDS) and not any(kw in existing for kw in _PRIVACY_KEYWORDS))
             ):
                 candidates[full_url] = anchor_text
         if len(candidates) >= limit:
@@ -426,17 +508,22 @@ def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100)
 
 
 def _score_candidate(url: str, anchor_text: str = "") -> tuple[int, int]:
-    """
-    Score a candidate URL and anchor text.
-    Returns (priority_index, anchor_bonus) where lower values are better.
-    anchor_bonus: -1 if anchor explicitly says "privacy policy", 0 otherwise.
+    """Score a candidate URL and anchor text.
+
+    Args:
+        url: The candidate URL to score.
+        anchor_text: The anchor text associated with the candidate URL. Defaults to "".
+
+    Returns:
+        A tuple of (priority_index, anchor_bonus) where lower values are better.
+        anchor_bonus is -1 if anchor explicitly matches privacy keywords, otherwise 0.
     """
     url_priority = _get_url_priority(url)
     anchor_bonus = 0
     
     # Give extra credit if anchor text explicitly mentions "privacy policy"
     anchor_lower = (anchor_text or "").lower()
-    if "privacy policy" in anchor_lower or "privacy-policy" in anchor_lower:
+    if any(kw in anchor_lower for kw in _PRIVACY_KEYWORDS):
         anchor_bonus = -1  # Lower is better, so -1 boosts the score
     
     return (url_priority, anchor_bonus)
