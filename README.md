@@ -16,8 +16,55 @@ and **aggregate** category scores into an overall score with strengths, risks, r
 > **Part of [Happy Hacking Space](https://github.com/HappyHackingSpace) - A community-driven
 > organization focused on security, AI, and software development.**
 
+## Architecture & How It Works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as CLI User
+    participant CLI as main.py (CLI)
+    participant Finder as URL Discovery
+    participant Extractor as Text Extractor
+    participant Splitted as Text Chunking
+    participant Gemini as _analyze_chunk_gemini
+    participant OpenAI as _analyze_chunk_openai
+    participant Scorer as scoring.py (Aggregator)
+
+    User->>CLI: --url, --model, --report, etc.
+    CLI->>Finder: discover_privacy_policy_url(url)
+    Finder-->>CLI: Resolved Policy URL
+    
+    CLI->>Extractor: extract_text_content(resolved_url, fetch_method)
+    alt HTTP (trafilatura / BS4)
+        Extractor-->>CLI: Policy Raw Text
+    else Headless Selenium (fallback)
+        Extractor-->>CLI: Rendered Visible Text
+    end
+
+    CLI->>Splitted: chunk_text(raw_text)
+    Splitted-->>CLI: List of Paragraph-Aware Text Chunks
+
+    loop Parallel per text chunk (ThreadPoolExecutor)
+        alt Model starts with "gemini"
+            CLI->>Gemini: analyze_chunk_json(chunk, model)
+            Note over Gemini: Google Gen AI SDK<br/>GEMINI_API_KEY
+            Gemini-->>CLI: Structured JSON Chunk Audit
+        else Other models (e.g. gpt-4o)
+            CLI->>OpenAI: analyze_chunk_json(chunk, model)
+            Note over OpenAI: OpenAI SDK<br/>OPENAI_API_KEY
+            OpenAI-->>CLI: Structured JSON Chunk Audit
+        end
+    end
+
+    CLI->>Scorer: aggregate_chunk_results(json_list)
+    Scorer-->>CLI: Overall score, Strengths, Risks, Red Flags
+
+    CLI->>User: Renders requested report (summary | detailed | full)
+```
+
 ## Features
 
+- **Multi-LLM Provider Engine**: Seamlessly switch between **Google Gemini** (using official `google-genai` SDK) and **OpenAI GPT** models based on model name prefix.
 - **Auto-discovery**: Common paths → robots.txt/sitemaps → footer links.
 - **HTTP-first extraction**: `trafilatura` (clean text) or `BeautifulSoup` fallback; **Selenium** for dynamic pages.
 - **Structured scoring (JSON)**: Per-category (0–10) scores + rationales; aggregated to 0–100 overall in `scoring.py`.
@@ -48,6 +95,7 @@ privacy-policy-analyzer/
 ├── pyproject.toml                 # Project configuration
 ├── requirements.txt               # Legacy requirements
 ├── .env.example                   # Environment template
+├── RESULTS.md                     # Benchmarks & real-world scores (GitHub, TikTok, Meta)
 ├── .gitignore
 ├── LICENSE
 └── README.md
@@ -56,7 +104,7 @@ privacy-policy-analyzer/
 ## Requirements
 
 - Python **3.10.11 or higher**
-- An **OpenAI API key**
+- An **OpenAI API key** (for GPT models) and/or **Google Gemini API key** (for Gemini models)
 - (Optional) **Chrome/Chromium** on the machine (Selenium fallback; driver auto-installs)
 
 ## Installation
@@ -100,8 +148,10 @@ Copy `.env.example` → `.env` and set your credentials:
 
 ```
 OPENAI_API_KEY=sk-************************
-# Optional (overrides default):
 OPENAI_MODEL=gpt-4o
+
+# Required if using Gemini models (e.g. gemini-2.5-flash)
+GEMINI_API_KEY=AIzaSy*********************
 ```
 
 ## Usage
