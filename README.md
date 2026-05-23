@@ -18,10 +18,49 @@ and **aggregate** category scores into an overall score with strengths, risks, r
 
 ## Architecture & How It Works
 
-The analyzer runs an automated multi-stage pipeline as represented below:
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as CLI User
+    participant CLI as main.py (CLI)
+    participant Finder as URL Discovery
+    participant Extractor as Text Extractor
+    participant Splitted as Text Chunking
+    participant Gemini as _analyze_chunk_gemini
+    participant OpenAI as _analyze_chunk_openai
+    participant Scorer as scoring.py (Aggregator)
 
-![Privacy Policy Analyzer Workflow](docs/workflow.svg)
+    User->>CLI: --url, --model, --report, etc.
+    CLI->>Finder: discover_privacy_policy_url(url)
+    Finder-->>CLI: Resolved Policy URL
+    
+    CLI->>Extractor: extract_text_content(resolved_url, fetch_method)
+    alt HTTP (trafilatura / BS4)
+        Extractor-->>CLI: Policy Raw Text
+    else Headless Selenium (fallback)
+        Extractor-->>CLI: Rendered Visible Text
+    end
 
+    CLI->>Splitted: chunk_text(raw_text)
+    Splitted-->>CLI: List of Paragraph-Aware Text Chunks
+
+    loop Parallel per text chunk (ThreadPoolExecutor)
+        alt Model starts with "gemini"
+            CLI->>Gemini: analyze_chunk_json(chunk, model)
+            Note over Gemini: Google Gen AI SDK<br/>GEMINI_API_KEY
+            Gemini-->>CLI: Structured JSON Chunk Audit
+        else Other models (e.g. gpt-4o)
+            CLI->>OpenAI: analyze_chunk_json(chunk, model)
+            Note over OpenAI: OpenAI SDK<br/>OPENAI_API_KEY
+            OpenAI-->>CLI: Structured JSON Chunk Audit
+        end
+    end
+
+    CLI->>Scorer: aggregate_chunk_results(json_list)
+    Scorer-->>CLI: Overall score, Strengths, Risks, Red Flags
+
+    CLI->>User: Renders requested report (summary | detailed | full)
+```
 
 ## Features
 

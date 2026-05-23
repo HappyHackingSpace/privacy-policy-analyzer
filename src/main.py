@@ -691,7 +691,7 @@ def _analyze_chunk_openai(text_chunk: str, model: str) -> dict[str, Any] | None:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set. Configure your .env file.")
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, base_url=os.getenv("OPENAI_BASE_URL"))
     resp = client.chat.completions.create(
         model=model,
         messages=[
