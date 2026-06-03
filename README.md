@@ -16,8 +16,13 @@ and **aggregate** category scores into an overall score with strengths, risks, r
 > **Part of [Happy Hacking Space](https://github.com/HappyHackingSpace) - A community-driven
 > organization focused on security, AI, and software development.**
 
+## Architecture & How It Works
+
+![Privacy Policy Analyzer System Workflow](docs/workflow.svg)
+
 ## Features
 
+- **Multi-LLM Provider Engine**: Seamlessly switch between **Google Gemini** (using official `google-genai` SDK) and **OpenAI GPT** models based on model name prefix.
 - **Auto-discovery**: Common paths → robots.txt/sitemaps → footer links.
 - **HTTP-first extraction**: `trafilatura` (clean text) or `BeautifulSoup` fallback; **Selenium** for dynamic pages.
 - **Structured scoring (JSON)**: Per-category (0–10) scores + rationales; aggregated to 0–100 overall in `scoring.py`.
@@ -48,6 +53,7 @@ privacy-policy-analyzer/
 ├── pyproject.toml                 # Project configuration
 ├── requirements.txt               # Legacy requirements
 ├── .env.example                   # Environment template
+├── RESULTS.md                     # Benchmarks & real-world scores (GitHub, TikTok, Meta)
 ├── .gitignore
 ├── LICENSE
 └── README.md
@@ -56,7 +62,7 @@ privacy-policy-analyzer/
 ## Requirements
 
 - Python **3.10.11 or higher**
-- An **OpenAI API key**
+- An **OpenAI API key** (for GPT models) and/or **Google Gemini API key** (for Gemini models)
 - (Optional) **Chrome/Chromium** on the machine (Selenium fallback; driver auto-installs)
 
 ## Installation
@@ -100,8 +106,10 @@ Copy `.env.example` → `.env` and set your credentials:
 
 ```
 OPENAI_API_KEY=sk-************************
-# Optional (overrides default):
 OPENAI_MODEL=gpt-4o
+
+# Required if using Gemini models (e.g. gemini-2.5-flash)
+GEMINI_API_KEY=AIzaSy*********************
 ```
 
 ## Usage
