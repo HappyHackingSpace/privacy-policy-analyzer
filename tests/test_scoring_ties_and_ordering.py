@@ -1,4 +1,4 @@
-from src.analyzer.scoring import aggregate_chunk_results
+from privacy_policy_analyzer.scoring import aggregate_chunk_results
 
 ALL = [
     "lawful_basis_and_purpose",

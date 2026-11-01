@@ -1,5 +1,5 @@
 import math
-from src.analyzer.scoring import SCORING_WEIGHTS, aggregate_chunk_results
+from privacy_policy_analyzer.scoring import SCORING_WEIGHTS, aggregate_chunk_results
 
 ALL_CATEGORIES = [
     "lawful_basis_and_purpose",

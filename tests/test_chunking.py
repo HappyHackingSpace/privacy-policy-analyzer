@@ -1,14 +1,9 @@
-import pytest
+from privacy_policy_analyzer.main import split_text_into_chunks
 
-main = pytest.importorskip(
-    "src.main",
-    reason="requires optional runtime deps (dotenv/bs4/requests/selenium/langchain-text-splitters)"
-)
-
-split_text_into_chunks = getattr(main, "split_text_into_chunks")
 
 def test_split_text_into_chunks_empty_returns_empty():
     assert split_text_into_chunks("") == []
+
 
 def test_split_text_into_chunks_respects_max_size():
     text = "Lorem ipsum " * 50

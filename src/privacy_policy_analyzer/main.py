@@ -3,14 +3,12 @@ import gzip
 import io
 import json
 import os
-import pathlib
 import re
-import sys
 import xml.etree.ElementTree as ET
 from typing import Any
 from urllib.parse import urljoin, urlparse
-from analyzer.prompts import SYSTEM_SCORER, build_user_prompt
-from analyzer.scoring import aggregate_chunk_results
+from privacy_policy_analyzer.prompts import SYSTEM_SCORER, build_user_prompt
+from privacy_policy_analyzer.scoring import aggregate_chunk_results
 import click
 import requests
 from bs4 import BeautifulSoup
@@ -27,11 +25,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 import chromedriver_autoinstaller
-
-ROOT = pathlib.Path(__file__).resolve().parent
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 try:
     import trafilatura

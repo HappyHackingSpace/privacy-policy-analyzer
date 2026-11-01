@@ -1,4 +1,4 @@
-from src.analyzer.prompts import build_user_prompt
+from privacy_policy_analyzer.prompts import build_user_prompt
 
 def test_build_user_prompt_contains_schema_and_excerpt():
     excerpt = "This is a sample privacy policy excerpt."
