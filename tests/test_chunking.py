@@ -1,4 +1,4 @@
-from privacy_policy_analyzer.main import split_text_into_chunks
+from privacy_policy_analyzer import split_text_into_chunks
 
 
 def test_split_text_into_chunks_empty_returns_empty():
