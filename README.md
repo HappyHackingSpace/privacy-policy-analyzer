@@ -242,6 +242,10 @@ We welcome contributions! Please see our
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/HappyHackingSpace/privacy-policy-analyzer/discussions)
 - 📧 **Contact**: [Happy Hacking Space](https://github.com/HappyHackingSpace)
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HappyHackingSpace/privacy-policy-analyzer&type=Date)](https://star-history.com/#HappyHackingSpace/privacy-policy-analyzer&Date)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
