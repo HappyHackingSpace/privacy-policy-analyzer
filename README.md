@@ -34,12 +34,15 @@ and **aggregate** category scores into an overall score with strengths, risks, r
 ```
 privacy-policy-analyzer/
 ├── src/
-│   ├── __init__.py
-│   ├── main.py                    # Main CLI application
-│   └── analyzer/
-│       ├── __init__.py
+│   └── privacy_policy_analyzer/   # Importable core library
+│       ├── __init__.py            # Public API (analyze, AnalysisResult, ...)
+│       ├── discovery.py           # Privacy policy URL discovery
+│       ├── fetching.py            # HTTP/trafilatura/Selenium text extraction
+│       ├── analysis.py            # Chunking + LLM scoring + analyze()
+│       ├── models.py              # AnalysisResult dataclass and errors
 │       ├── prompts.py             # LLM prompts for analysis
-│       └── scoring.py             # Scoring algorithms
+│       ├── scoring.py             # Scoring weights and aggregation
+│       └── cli.py                 # `ppa` click CLI
 ├── docs/                          # Documentation
 │   ├── index.md
 │   ├── user-guide.md
@@ -114,20 +117,54 @@ GEMINI_API_KEY=AIzaSy*********************
 
 ## Usage
 
-### Quick start (auto-discovery, summary report)
+### CLI quick start (auto-discovery, summary report)
+
+The package installs a `ppa` command:
 
 ```bash
 # Using uv
-uv run python src/main.py --url https://www.example.com/ --report summary
+uv run ppa https://www.example.com/ --report summary
 
-# Using pip
-python src/main.py --url https://www.example.com/ --report summary
+# In an activated environment (uv sync or pip install -e .)
+ppa https://www.example.com/ --report summary
+
+# python -m also works
+python -m privacy_policy_analyzer https://www.example.com/
 ```
+
+### Library usage
+
+Everything the CLI does is available as an importable API:
+
+```python
+from privacy_policy_analyzer import analyze, FetchError
+
+try:
+    result = analyze("https://www.example.com/")  # model defaults to env OPENAI_MODEL or gpt-4o
+except FetchError as exc:
+    print(exc.to_dict())
+else:
+    print(result.overall_score)          # 0-100 weighted score
+    print(result.top_risks)              # lowest-scoring categories
+    print(result.to_dict(report="detailed"))  # same JSON the CLI prints
+```
+
+Lower-level building blocks are exported too: `resolve_privacy_url(url)`,
+`fetch_policy_text(url, prefer="auto")`, `split_text_into_chunks(text)`,
+`analyze_chunk_json(chunk, model)`, and `aggregate_chunk_results(results)`.
+
+### Machine-readable output
+
+```bash
+ppa https://www.example.com/ --json > report.json
+```
+
+`--json` prints only the JSON report (no progress banner or performance summary).
 
 ### Detailed JSON (category scores, rationales, red flags)
 
 ```bash
-uv run python src/main.py --url https://www.example.com/ --report detailed
+uv run ppa https://www.example.com/ --report detailed
 ```
 
 ### Force a specific fetch method
@@ -135,35 +172,37 @@ uv run python src/main.py --url https://www.example.com/ --report detailed
 - HTTP only (faster/cleaner when available):
 
 ```bash
-uv run python src/main.py --url https://www.example.com/ --fetch http --report detailed
+uv run ppa https://www.example.com/ --fetch http --report detailed
 ```
 
 - Selenium only (for heavily dynamic pages):
 
 ```bash
-uv run python src/main.py --url https://www.example.com/ --fetch selenium --report detailed
+uv run ppa https://www.example.com/ --fetch selenium --report detailed
 ```
 
 ### Skip auto-discovery (analyze a known policy URL as-is)
 
 ```bash
-uv run python src/main.py --url https://www.example.com/legal/privacy --no-discover --report detailed
+uv run ppa https://www.example.com/legal/privacy --no-discover --report detailed
 ```
 
 ### Tuning chunking and cost/latency
 
 ```bash
 # Larger chunks = fewer requests (cheaper/faster), but slightly coarser analysis
-uv run python src/main.py --url https://example.com --chunk-size 3500 --chunk-overlap 350 --max-chunks 30 --report summary
+uv run ppa https://example.com --chunk-size 3500 --chunk-overlap 350 --max-chunks 30 --report summary
 ```
 
 ## CLI Options (summary)
 
-- `--url` **(required)**: Site homepage or direct privacy policy URL.
+- `URL` **(positional)**: Site homepage or direct privacy policy URL
+  (prompted interactively if omitted; the legacy `--url` spelling still works).
 - `--model` *(default: env `OPENAI_MODEL` or `gpt-4o`)*: OpenAI chat model name.
 - `--fetch` *(default: `auto`)*: `auto` | `http` | `selenium`.
 - `--no-discover`: Analyze the given URL without discovery.
-- `--chunk-size` *(default: 3500)* and `--chunk-overlap` *(default: 350)*.
+- `--chunk-size` *(default: 10000)* and `--chunk-overlap` *(default: 350)*.
+- `--json`: Print only the JSON report (for scripting/piping).
 - `--max-chunks` *(default: 30)*: Hard cap; tail chunks are merged to keep requests bounded.
 - `--report` *(default: `summary`)*: `summary` | `detailed` | `full`.
 
