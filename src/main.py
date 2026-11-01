@@ -114,7 +114,6 @@ _MIN_TEXT_LENGTH_POLICY = 400  # extracted policy text must exceed this to be ke
 
 # Priority/discovery configurations
 _NO_MATCH_PRIORITY = 999
-_MAX_SPECIFIC_PRIORITY = 2  # Priorities <= 2 are considered highly specific policy pages
 
 def _is_privacy_like(s: str) -> bool:
     """Heuristic check for privacy-related terms in a string.
@@ -375,85 +374,6 @@ def _get_url_priority(url: str) -> int:
         if pattern.search(url):
             return idx
     return _NO_MATCH_PRIORITY
-
-
-def _get_priority_key(item: tuple[int, str]) -> int:
-    """Helper key function to sort matches by priority index (ascending)."""
-    return item[0]
-
-
-def find_best_policy_url(html_content: str, base_url: str) -> tuple[str, int] | None:
-    """Finds the single best-matching URL for a privacy-related link on the page.
-
-    Args:
-        html_content: The HTML content of the page to search for links.
-        base_url: The base URL used to resolve relative links.
-
-    Returns:
-        A tuple of (url, priority_index) if matches are found, otherwise None.
-    """
-    if not html_content:
-        return None
-        
-    soup = BeautifulSoup(html_content, "html.parser")
-    
-    # Store tuples of (priority_index, full_url)
-    matches: list[tuple[int, str]] = []
-    seen_urls = set()
-
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        try:
-            full_url = urljoin(base_url, href)
-        except Exception as e:
-            click.secho(f"      DEBUG: URL join error for '{href}': {e}", fg="yellow", dim=True, err=True)
-            continue
-
-        if not full_url.startswith("http"):
-            continue
-            
-        if full_url in seen_urls:
-            continue
-        seen_urls.add(full_url)
-
-        # Check regex priority
-        priority_idx = _get_url_priority(full_url)
-        if priority_idx < _NO_MATCH_PRIORITY:
-            matches.append((priority_idx, full_url))
-
-    if not matches:
-        return None
-
-    # Sort by priority index (ascending), get the best match
-    matches.sort(key=_get_priority_key)
-    return (matches[0][1], matches[0][0])
-
-
-def _improve_candidate(candidate_url: str) -> str:
-    """If the found candidate is a generic 'hub' page (e.g. /privacy),
-
-    fetch it and check if it links to a more specific policy (e.g. /privacy-policy).
-    """
-    # 0=privacy-policy, 1=privacy/policy, 2=privacy-policy-x
-    # Generally, if we found something better than generic 'privacy' (index 6), we stick with it.
-    # But let's say anything > _MAX_SPECIFIC_PRIORITY is worth checking deeper.
-    priority = _get_url_priority(candidate_url)
-    if priority <= _MAX_SPECIFIC_PRIORITY:
-        return candidate_url
-
-    click.secho(f"      DEBUG: Candidate '{candidate_url}' is generic (Priority {priority}). Checking for deep links...", fg="yellow", dim=True, err=True)
-    r = _http_get(candidate_url)
-    if not r:
-        return candidate_url
-
-    match_info = find_best_policy_url(r.text, r.url)
-    if match_info:
-        deep_url, deep_priority = match_info
-        if deep_priority < priority:
-            click.secho(f"      DEBUG: Upgraded to deep link '{deep_url}' (Priority {deep_priority})", fg="yellow", dim=True, err=True)
-            return deep_url
-    
-    return candidate_url
 
 
 def _collect_link_candidates(html_content: str, base_url: str, limit: int = 100) -> list[tuple[str, str]]:
