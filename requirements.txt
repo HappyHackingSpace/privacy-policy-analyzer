@@ -1,6 +1,6 @@
 openai>=1.102.0,<2
 python-dotenv>=1.1.1,<2
-langchain-text-splitters>=0.3.11,<0.4
+langchain-text-splitters>=0.3.11,<1.2
 selenium>=4.35.0,<5
 chromedriver-autoinstaller>=0.6,<0.7
 requests>=2.32.5,<3
